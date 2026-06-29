@@ -1,0 +1,21 @@
+{
+    "name": "DCL.Automation.SelfTest.Editor",
+    "rootNamespace": "DCL.Automation",
+    "references": [
+        "GUID:e25ef972de004615a22937e739de2def",
+        "GUID:9c1932d9907bf426d845767a97c591ac"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "DCL_AUTOMATION_BRIDGE"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

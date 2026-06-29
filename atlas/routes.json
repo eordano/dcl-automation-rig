@@ -1,0 +1,40 @@
+{
+  "_comment": "REPLACES the Unity atlas's recipes.json. The Unity atlas reached each UI state via a Unity auth-FSM reflection RECIPE (force the client into that state by reflection). In the web stack every screen is a URL-addressable bevy-overlay.* route served by catalyst, so 'forcing UI state' is just navigating chromium to a URL. This is the URL/route table: per route, the path + query params, the auth variant it needs, and the catalyst data source (for honest per-source fixture fallback). url-walk.sh drives chromium to base+path, settles, screenshots, and names the PNG from atlas-codes.json. base = $DCL_HUD_BASE.",
+  "_query_param_grammar": "?panel=<chat|explore|emote|notifications|map|backpack|settings|passport|friends|voice|community> [&tab=...] [&address=0x...] [&filter=...] [&self=1]",
+  "_auth": {
+    "anon": "no identity — the resting/static state every widget degrades to (the dclBridge is null; ui3 static rows). Wired-now: routes render real catalyst read data with per-source fixture fallback.",
+    "auth": "an authenticated/guest variant — set up via rig/auth (engine /login_guest is reachable today; full identity stream is GATED on the worker-gap, see docs/bridge-status.md)."
+  },
+  "routes": [
+    { "route": "hud",              "path": "/client",                              "auth": "anon", "source": "live-realm/static", "note": "resting HUD: Sidebar+Minimap+Chat+ConnectionStatus" },
+    { "route": "chat",             "path": "/client?panel=chat",                   "auth": "anon", "source": "GetChatStream (GATED worker-gap; resting surface renders)" },
+    { "route": "explore",          "path": "/client?panel=explore",                "auth": "anon", "source": "catalyst-explore/places (SSR, real)" },
+    { "route": "emote",            "path": "/client?panel=emote",                  "auth": "anon", "source": "emote wheel (client-only); /emote action reachable today" },
+    { "route": "notifications",    "path": "/client?panel=notifications",          "auth": "auth", "source": "catalyst-notifications", "fixture": "bevy-overlay-notifications" },
+    { "route": "settings",         "path": "/client?panel=settings",               "auth": "anon", "source": "catalyst-profile/settings", "fixture": "bevy-overlay-settings" },
+    { "route": "settingsgraphics", "path": "/client?panel=settings&tab=graphics",  "auth": "anon", "source": "settings (graphics tab)" },
+    { "route": "settingssounds",   "path": "/client?panel=settings&tab=sounds",    "auth": "anon", "source": "settings (sounds tab)" },
+    { "route": "settingscontrols", "path": "/client?panel=settings&tab=controls",  "auth": "anon", "source": "settings (controls tab)" },
+    { "route": "settingschat",     "path": "/client?panel=settings&tab=chat",      "auth": "anon", "source": "settings (chat tab)" },
+    { "route": "map",              "path": "/client?panel=map",                    "auth": "anon", "source": "catalyst-map tilemap", "fixture": "bevy-overlay-map-jump" },
+    { "route": "mapjump",          "path": "/client?panel=map",                    "auth": "anon", "source": "catalyst-map (jump step; cl_map_jump simulated)", "fixture": "bevy-overlay-map-jump" },
+    { "route": "backpack",         "path": "/client?panel=backpack",               "auth": "auth", "source": "catalyst-profile/wearables", "fixture": "bevy-overlay-backpack-equip" },
+    { "route": "backpackequip",    "path": "/client?panel=backpack",               "auth": "auth", "source": "wearables equip wizard", "fixture": "bevy-overlay-backpack-equip" },
+    { "route": "backpackemotes",   "path": "/client?panel=backpack&tab=emotes",    "auth": "auth", "source": "emotes bind wizard", "fixture": "bevy-overlay-backpack-emotes" },
+    { "route": "outfitsave",       "path": "/client?panel=backpack&tab=outfits",   "auth": "auth", "source": "saved outfits", "fixture": "bevy-overlay-outfit-save" },
+    { "route": "passport",         "path": "/client?panel=passport&address=0x0000000000000000000000000000000000000000", "auth": "anon", "source": "catalyst-profile (passport)", "fixture": "bevy-overlay-passport" },
+    { "route": "passportphotos",   "path": "/client?panel=passport&address=0x0000000000000000000000000000000000000000&tab=photos", "auth": "anon", "source": "catalyst-camera-reel (photos tab)", "fixture": "bevy-overlay-passport" },
+    { "route": "friends",          "path": "/client?panel=friends",                "auth": "auth", "source": "catalyst-social friends (connectivity GATED worker-gap)", "fixture": "bevy-overlay-friend-request" },
+    { "route": "friendrequest",    "path": "/client?panel=friends",                "auth": "auth", "source": "friend-request wizard (commit SIMULATED)", "fixture": "bevy-overlay-friend-request" },
+    { "route": "communities",      "path": "/client?panel=community",              "auth": "anon", "source": "catalyst-communities (GET /v1/communities)" },
+    { "route": "communitycreate",  "path": "/client?panel=community&tab=create",   "auth": "auth", "source": "communities create (write not edge-proxied; SIMULATED)", "fixture": "bevy-overlay-community-create" },
+    { "route": "communityjoin",    "path": "/client?panel=community&tab=join",     "auth": "auth", "source": "communities join (write SIMULATED)", "fixture": "bevy-overlay-community-join" },
+    { "route": "voice",            "path": "/client?panel=voice",                  "auth": "auth", "source": "catalyst-comms voice (mic state GATED worker-gap)", "fixture": "bevy-overlay-voice-join" },
+    { "route": "marketplace",      "path": "/client?panel=explore&tab=marketplace","auth": "anon", "source": "catalyst-market" },
+    { "route": "camerareel",       "path": "/client?panel=explore&tab=reel",       "auth": "auth", "source": "catalyst-camera-reel" },
+    { "route": "credits",          "path": "/client?panel=explore&tab=credits",    "auth": "auth", "source": "catalyst-credits" },
+    { "route": "profilewidget",    "path": "/client",                              "auth": "auth", "source": "GetParams identity (GATED worker-gap; static seed otherwise)" },
+    { "route": "connectionstatus", "path": "/client",                              "auth": "anon", "source": "live realm connectivity (static when no engine)" },
+    { "route": "minimap",          "path": "/client",                              "auth": "anon", "source": "LiveSceneInfo via /live_scenes (title only; coords/realm lost through console string)" }
+  ]
+}

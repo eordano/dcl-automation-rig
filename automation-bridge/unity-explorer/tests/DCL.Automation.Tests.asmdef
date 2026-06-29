@@ -1,0 +1,24 @@
+{
+    "name": "DCL.Automation.Tests",
+    "rootNamespace": "DCL.Automation.Tests",
+    "references": [
+        "GUID:e25ef972de004615a22937e739de2def",
+        "GUID:9c1932d9907bf426d845767a97c591ac",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS",
+        "DCL_AUTOMATION_BRIDGE"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

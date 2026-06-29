@@ -1,0 +1,7 @@
+# pr-review-baseline.txt — routes that are EXPECTED broken on a clean base (so a
+# PR isn't blamed for them). Comma- or newline-separated route names matching the
+# atlas <route> codes (see ../atlas/atlas-codes.json). The Unity rig listed
+# `camera` (M03, Arch-ECS reflection, pre-existing). web-stack starts with NO known
+# pre-broken route — the GATED surfaces (identity/streams) are not "broken", they
+# are intentionally unwired (worker-gap), so they are not listed here. Add a route
+# here only once you've confirmed it's broken on the base, not by the PR.

@@ -1,0 +1,182 @@
+From c651d0825f5007d6af2087fad07d6d536d314501 Mon Sep 17 00:00:00 2001
+From: Esteban Ordano <esteban@opengarden.tech>
+Date: Mon, 22 Jun 2026 17:11:22 +0200
+Subject: [PATCH] unity(harness): back-port comms-hold mode into canonical
+ DclPlaytestHarness
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Adds the live multi-client "comms" mode that was authored in the win11 checkout's
+DclHarness drop during the 3-platform comms test, into the rig CANONICAL source so
+every platform's harness drop carries it (was drifted — drop had it, canonical didn't):
+- RunCommsHoldFromMenu / mode "comms" dispatch
+- RunCommsHoldCoroutine: join -> GP(0,0) -> HOLD (no teleport-away/realm-switch/exit),
+  logs remote-avatar census + refreshes a world shot every CENSUS_S
+- CountWorldAvatars(out names): non-preview AvatarBase census (remote = total-1)
+
+Purely additive (+129). Platform-agnostic. Local only, no push.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_014nh2TNCVS9LzKhzTM3DD34
+---
+ unity/DclPlaytestHarness.cs | 129 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 129 insertions(+)
+
+diff --git a/unity/DclPlaytestHarness.cs b/unity/DclPlaytestHarness.cs
+index bb6ec40..f091490 100644
+--- a/unity/DclPlaytestHarness.cs
++++ b/unity/DclPlaytestHarness.cs
+@@ -296,6 +296,15 @@ namespace DCL.Harness
+         [MenuItem("DCL/Harness/Capture Atlas (UI surface)")]
+         public static void RunAtlasFromMenu() => Arm(exitOnFinish: false, mode: "atlas");
+ 
++        // COMMS HOLD: live multi-client test (2026-06-22). Join the launch realm (--realm
++        // https://<your-catalyst-host>), reach interactive, teleport to Genesis Plaza (0,0), then HOLD
++        // in-world indefinitely so peer clients (Linux/Windows) see this avatar and we see theirs.
++        // UNLIKE atlas: no teleport-away, no realm switch, no Play-exit. Logs a remote-avatar census
++        // + refreshes a world shot every CENSUS_S so the rig reads the count from the log. exec via
++        // ClaudeIPC: exec method=DCL.Harness.DclPlaytestHarness.RunCommsHoldFromMenu.
++        [MenuItem("DCL/Harness/Comms Hold at Genesis Plaza (live multi-client)")]
++        public static void RunCommsHoldFromMenu() => Arm(exitOnFinish: false, mode: "comms");
++
+         // --- Screenshot resolution presets (final PNG = GameView size x superSize) ---
+         // NATIVE-resolution presets (superSize 1 so UI composites correctly).
+         [MenuItem("DCL/Harness/Capture Resolution/720p native (1280x720)")]   public static void Res720()  => SetCaptureResolution(1280, 720, 1);
+@@ -390,6 +399,7 @@ namespace DCL.Harness
+                                     : mode == "render" ? RunRenderDecompCoroutine()
+                                     : mode == "auth"   ? RunAuthCaptureCoroutine()
+                                     : mode == "atlas"  ? RunAtlasCoroutine()
++                                    : mode == "comms"  ? RunCommsHoldCoroutine()
+                                     : RunSessionCoroutine();
+                 HarnessRunner.Start(routine);
+             }
+@@ -2364,6 +2374,125 @@ namespace DCL.Harness
+             yield return CaptureShot(label);
+         }
+ 
++        // =====================================================================
++        //  COMMS HOLD  (live multi-client comms test, 2026-06-22 user request)
++        // =====================================================================
++        // Genesis Plaza spawn is ~(0,0); teleport there explicitly so all three test
++        // clients converge on the same parcel. CENSUS_S = how often we log the remote-
++        // avatar count + refresh the world shot while holding.
++        private const float CENSUS_S = 5f;
++        private static readonly Vector2Int GENESIS_PLAZA = new Vector2Int(0, 0);
++        internal static int commsLastTotalAvatars = -1, commsLastRemoteAvatars = -1;
++
++        // Count world (non-preview) avatars currently instantiated. The local player is
++        // one of them, so remote = total - 1. Mirrors the CheckAvatars enumeration.
++        public static int CountWorldAvatars(out string names)
++        {
++            names = "";
++            Type avatarT  = FindType("DCL.AvatarRendering.AvatarShape.UnityInterface.AvatarBase");
++            Type previewT = FindType("DCL.CharacterPreview.CharacterPreviewAvatarContainer");
++            if (avatarT == null) return -1;
++            var found = new List<string>();
++            foreach (UnityEngine.Object o in UnityEngine.Object.FindObjectsByType(avatarT))
++            {
++                var c = (Component)o;
++                bool isPreview = previewT != null && c.GetComponentInParent(previewT) != null;
++                if (isPreview) continue;   // backpack character-preview avatar, not a world peer
++                found.Add(c.name);
++            }
++            names = string.Join(", ", found);
++            return found.Count;
++        }
++
++        // Join -> interactive -> teleport to GP(0,0) -> HOLD forever (until Play exits).
++        // Never teleports away, never switches realm, never exits Play. The HOLD loop is
++        // what keeps this client present so peers see it; the census is how we report who
++        // we see. On our stack, NOT reaching Completed means the livekit room was refused
++        // (parks at GlobalPXsLoading) — we still hold + shoot so the failure is visible.
++        private static IEnumerator RunCommsHoldCoroutine()
++        {
++            var report = new Report { startedUtc = DateTime.UtcNow.ToString("o") };
++            var sw = System.Diagnostics.Stopwatch.StartNew();
++
++            shotIndex = 0;
++            try
++            {
++                if (Directory.Exists(SHOTS_DIR)) Directory.Delete(SHOTS_DIR, true);
++                Directory.CreateDirectory(SHOTS_DIR);
++            }
++            catch (Exception e) { Debug.LogWarning("[Harness] comms: could not reset shots dir: " + e.Message); }
++
++            for (int i = 0; i < 3 && EditorApplication.isPlaying; i++) yield return null;
++
++            object mainSceneLoader = null;
++            float findDeadline = Time.realtimeSinceStartup + 30f;
++            while (mainSceneLoader == null && Time.realtimeSinceStartup < findDeadline)
++            {
++                mainSceneLoader = FindMainSceneLoader();
++                if (mainSceneLoader == null) yield return null;
++            }
++            if (mainSceneLoader == null) { report.fatal = "comms: no MainSceneLoader"; Finish(report, sw); yield break; }
++
++            // Wait for interactive (Completed) — the livekit join gate on our stack.
++            object loadingStatus = null;
++            float ttiStart = Time.realtimeSinceStartup;
++            float ttiDeadline = ttiStart + LOAD_TIMEOUT_S;
++            bool reachedInteractive = false;
++            while (Time.realtimeSinceStartup < ttiDeadline)
++            {
++                if (loadingStatus == null)
++                {
++                    var sc = GetPrivateField(mainSceneLoader, "staticContainer");
++                    if (sc != null) loadingStatus = GetPublicProperty(sc, "LoadingStatus");
++                }
++                if (loadingStatus != null)
++                {
++                    string stage = ReadLoadingStage(loadingStatus);
++                    report.lastLoadingStage = stage;
++                    if (stage == "Completed") { reachedInteractive = true; break; }
++                }
++                yield return null;
++            }
++            report.reachedInteractive = reachedInteractive;
++            report.timeToInteractiveSeconds = reachedInteractive ? Time.realtimeSinceStartup - ttiStart : -1f;
++            Debug.Log($"[Harness] COMMS reachedInteractive={reachedInteractive} stage={report.lastLoadingStage} TTI={report.timeToInteractiveSeconds:F1}s");
++
++            object dynamicContainer = GetPrivateField(mainSceneLoader, "dynamicWorldContainer");
++            object staticContainer2 = GetPrivateField(mainSceneLoader, "staticContainer");
++            object realmNavigator   = dynamicContainer != null ? GetPublicProperty(dynamicContainer, "RealmNavigator") : null;
++
++            SetGameViewSize16x9(captureW, captureH);
++            HideDebugPanel(staticContainer2);
++
++            if (!reachedInteractive)
++                Debug.LogWarning("[Harness] COMMS not interactive (likely livekit room refused at GlobalPXsLoading); holding anyway to report state.");
++
++            // Teleport to Genesis Plaza (0,0) so all three clients converge, then settle.
++            if (realmNavigator != null)
++            {
++                bool tok = TryTeleport(realmNavigator, GENESIS_PLAZA, out string terr);
++                report.actions.Add(new PhaseMarker { label = "comms_teleport_gp", ok = tok, error = tok ? "to 0,0" : terr });
++                Debug.Log("[Harness] COMMS teleport to GP 0,0 ok=" + tok + (tok ? "" : " err=" + terr));
++                for (int i = 0; i < 300 && tok; i++) yield return null;   // ~5s settle for scene + peer streaming
++            }
++
++            // ----- HOLD: census every CENSUS_S, shot every ~30s, until Play exits -----
++            Debug.Log("[Harness] COMMS HOLD begins at GP 0,0. Census every " + CENSUS_S + "s; shot every ~30s. Exit Play to stop.");
++            int tick = 0;
++            while (EditorApplication.isPlaying)
++            {
++                int total = CountWorldAvatars(out string names);
++                int remote = Mathf.Max(0, total - 1);   // subtract the local player avatar
++                commsLastTotalAvatars = total; commsLastRemoteAvatars = remote;
++                Debug.Log($"[Harness] COMMS census tick={tick} world_avatars={total} remote={remote} names=[{names}]");
++                if (tick % 6 == 0) yield return CaptureShot("comms_gp");   // ~every 30s, keep a fresh world shot
++                float until = Time.realtimeSinceStartup + CENSUS_S;
++                while (Time.realtimeSinceStartup < until && EditorApplication.isPlaying) yield return null;
++                tick++;
++            }
++            Finish(report, sw);
++        }
++
+         // =====================================================================
+         //  SCREENSHOTS  (steer 2026-06-13: capture settled state; 2026-06-16:
+         //  panels/settings/friends + avatars only, forced ~16:9 game view)
+-- 
+2.54.0
+

@@ -1,0 +1,81 @@
+diff --git a/Explorer/Assets/DCL/NetworkDefinitions/Browser/GatewayUrlsSource.cs b/Explorer/Assets/DCL/NetworkDefinitions/Browser/GatewayUrlsSource.cs
+index efb88ae6..c9aa7ade 100644
+--- a/Explorer/Assets/DCL/NetworkDefinitions/Browser/GatewayUrlsSource.cs
++++ b/Explorer/Assets/DCL/NetworkDefinitions/Browser/GatewayUrlsSource.cs
+@@ -15,6 +15,25 @@ namespace DCL.Browser
+         private const string GATEWAY_SUBDOMAIN = "gateway";
+         private const int HTTPS_PREFIX_LENGTH = 8; // "https://".Length
+ 
++        // ---- [CATALYST dev-stack override] ------------------------------------------------------
++        // When CATALYST_BASE is set (e.g. https://<your-catalyst-host>), gateway routing is force-enabled
++        // (independent of the USE_GATEWAY feature flag) and the gateway HOST is retargeted from
++        // gateway.decentraland.<env> to CATALYST_BASE — the gateway that fronts our AB corpus + catalyst.
++        // CATALYST_EXCLUDE is a comma/space-separated list of subdomains kept on prod (NOT retargeted).
++        // A build WITHOUT this block ignores the env var and falls back to prod (the documented behaviour).
++        // Purely additive: unset env => identical to upstream. LOCAL DEV ONLY.
++        private static readonly string? CATALYST_BASE = NormalizeCatalystBase(Environment.GetEnvironmentVariable("CATALYST_BASE"));
++        private static readonly HashSet<string> CATALYST_EXCLUDE = ParseCatalystExclude(Environment.GetEnvironmentVariable("CATALYST_EXCLUDE"));
++        private static string? NormalizeCatalystBase(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim().TrimEnd('/');
++        private static HashSet<string> ParseCatalystExclude(string? v)
++        {
++            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
++            if (!string.IsNullOrWhiteSpace(v))
++                foreach (string t in v.Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries))
++                    set.Add(t.Trim());
++            return set;
++        }
++
+         private static readonly DecentralandEnvironment[] SUPPORTED_ENVS = { DecentralandEnvironment.Org, DecentralandEnvironment.Zone };
+ 
+         private static readonly HashSet<DecentralandUrl> SUPPORTED_URLS = new (EnumUtils.GetEqualityComparer<DecentralandUrl>())
+@@ -82,11 +101,13 @@ namespace DCL.Browser
+         private readonly string? gatewayPrefix;
+         private readonly string? domainSuffix;
+ 
+-        private bool enabled => envSupported && FeatureFlagsConfiguration.Instance.IsEnabled(FeatureFlagsStrings.USE_GATEWAY);
++        // [CATALYST] when overriding, force-enable routing regardless of the USE_GATEWAY feature flag.
++        private bool enabled => envSupported && (CATALYST_BASE != null || FeatureFlagsConfiguration.Instance.IsEnabled(FeatureFlagsStrings.USE_GATEWAY));
+ 
+         public GatewayUrlsSource(DecentralandEnvironment environment, IRealmData realmData, ILaunchMode launchMode, string? gatekeeperBaseOverride = null) : base(environment, realmData, launchMode, gatekeeperBaseOverride)
+         {
+-            envSupported = SUPPORTED_ENVS.Contains(environment);
++            // [CATALYST] override forces the machinery on even if this env isn't normally gateway-supported.
++            envSupported = SUPPORTED_ENVS.Contains(environment) || CATALYST_BASE != null;
+ 
+             if (envSupported)
+             {
+@@ -96,7 +117,8 @@ namespace DCL.Browser
+                 foreach (string pattern in SUPPORTED_URLS_OF_NON_CLIENT_ORIGIN)
+                     resolvedNonClientHosts.Add(pattern.Replace(ENV, envDomain));
+ 
+-                gatewayPrefix = $"https://{GATEWAY_SUBDOMAIN}.decentraland.{envDomain}/";
++                // [CATALYST] reverse-transform must recognise our retargeted host, so the prefix tracks the override.
++                gatewayPrefix = CATALYST_BASE != null ? $"{CATALYST_BASE}/" : $"https://{GATEWAY_SUBDOMAIN}.decentraland.{envDomain}/";
+                 domainSuffix = $".decentraland.{envDomain}";
+             }
+         }
+@@ -197,6 +219,24 @@ namespace DCL.Browser
+ 
+             int subdomainLength = firstDot - HTTPS_PREFIX_LENGTH;
+             int pathStart = url.IndexOf('/', firstDot);
++
++            // [CATALYST] retarget the gateway host to our dev stack, honoring the exclude set.
++            // Result: https://{sub}.decentraland.<env>/{path} -> {CATALYST_BASE}/{sub}/{path}
++            if (CATALYST_BASE != null)
++            {
++                // IDEMPOTENCY GUARD: some URLs are built from an already-transformed base (e.g.
++                // AssetBundleRegistryVersion = "{Url(AssetBundleRegistry)}/entities/versions") and then
++                // re-transformed because they're also in SUPPORTED_URLS. The upstream guard only catches the
++                // 'gateway.' subdomain; our retargeted host (<your-catalyst-host>) isn't 'gateway', so without
++                // this it would prepend 'catalyst' again -> https://<your-catalyst-host>/catalyst/...  (404).
++                if (url.StartsWith(CATALYST_BASE, StringComparison.OrdinalIgnoreCase)) return url;
++
++                string subdomain = url.Substring(HTTPS_PREFIX_LENGTH, subdomainLength);
++                if (CATALYST_EXCLUDE.Contains(subdomain)) return url;   // keep this service on prod
++                string path = pathStart >= 0 ? url.Substring(pathStart) : string.Empty;
++                return $"{CATALYST_BASE}/{subdomain}{path}";
++            }
++
+             int domainEnd = pathStart >= 0 ? pathStart : url.Length;
+             int domainLength = domainEnd - firstDot;
+             int pathLength = url.Length - domainEnd;

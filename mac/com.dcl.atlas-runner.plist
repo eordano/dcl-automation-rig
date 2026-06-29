@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.dcl.atlas-runner — LaunchAgent that polls the atlas trigger and runs the
+  Mac tour IN the logged-in GUI session (the only context that can present Metal).
+
+  WHY a *user* LaunchAgent (not a daemon): a LaunchAgent loaded from
+  ~/Library/LaunchAgents runs inside the user's Aqua session, so it inherits a
+  window server + GPU — required to render the editor. A LaunchDaemon (session 0)
+  could NOT present and the tour would fail.
+
+  INSTALL (reversible):
+    cp mac/com.dcl.atlas-runner.plist ~/Library/LaunchAgents/
+    launchctl load  ~/Library/LaunchAgents/com.dcl.atlas-runner.plist
+  UNINSTALL (fully reversible — nothing auto-destructive):
+    launchctl unload ~/Library/LaunchAgents/com.dcl.atlas-runner.plist
+    rm ~/Library/LaunchAgents/com.dcl.atlas-runner.plist
+  PAUSE without uninstalling:  launchctl unload …  (load again to resume)
+
+  EDIT FOR YOUR HOST: the absolute rig path, $HOME, DCL_EXPLORER_REPO (the Unity
+  checkout to capture), and PATH (nix-darwin dirs included by default). StartInterval
+  is the POLL cadence in seconds — the tick is a no-op unless the trigger fired.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dcl.atlas-runner</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-lc</string>
+        <string>exec /Users/usr/Projects/dcl-automation-rig/mac/atlas-runner.sh</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- The Unity checkout the tour captures (this host's win11 checkout). -->
+        <key>DCL_EXPLORER_REPO</key>
+        <string>/Users/usr/Projects/unity-explorer/unity-explorer-2026-06-win11</string>
+        <!-- Optional: watch a local branch tip instead of (or with) the trigger file. -->
+        <!-- <key>DCL_RUNNER_TRIGGER_BRANCH</key><string>mac-capture</string> -->
+        <!-- nix-darwin + standard tool dirs so git/python3/rsync/Unity resolve under launchd. -->
+        <key>PATH</key>
+        <string>/Users/usr/.nix-profile/bin:/run/current-system/sw/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <!-- Poll cadence: run the tick every 60s (no-op unless the trigger fired). -->
+    <key>StartInterval</key>
+    <integer>60</integer>
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Single instance: never overlap ticks (the runner also holds its own lock). -->
+    <key>LaunchOnlyOnce</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/usr/.dcl-rig/runner-logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/usr/.dcl-rig/runner-logs/launchd.err.log</string>
+
+    <!-- Keep the process nice; this is best-effort background capture. -->
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

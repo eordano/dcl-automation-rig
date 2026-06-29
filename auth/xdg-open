@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# URL-capture shim. Put this dir first on PATH (and/or point Wine's WineBrowser
+# registry key at this file) so every Application.OpenURL() the client makes is
+# logged to $URL_LOG before being forwarded to the real xdg-open. lib/auth.sh
+# and auth/auth-driver.py consume that log to sign the auth challenge headlessly.
+LOG=${URL_LOG:-$HOME/.dcl-rig/urls.log}
+mkdir -p "$(dirname "$LOG")"
+printf '[%s] %s\n' "$(date -Iseconds)" "$*" >> "$LOG"
+exec /usr/bin/xdg-open "$@"

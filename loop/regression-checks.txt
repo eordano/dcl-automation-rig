@@ -1,0 +1,28 @@
+# regression-checks.txt — strings that must NOT appear in a bevy-on-react session.
+#
+# One pattern per line (grep -E extended regex). run-loop.sh greps each against
+# the session report (loop/session.sh output); a non-zero count fails the tick.
+# RETARGETED from the Unity rig's sentinels (which guarded C#/Unity NREs) onto the
+# bevy-on-react failure classes. These are project- and branch-specific — TUNE
+# them to the regressions you've fixed and want to keep fixed. Lines starting
+# with '#' are comments; blank lines ignored.
+#
+# A pattern is a "sentinel" for a fix you've adopted: once you fix bug X, add the
+# string that bug X produced here, so any reappearance fails the loop immediately.
+# Annotate each with the fix it guards.
+
+# --- engine (wasm) hard failures (from cdp_exc.py / product-tour-web console) --
+HARD FAILURE                                     # the cdp_exc.py verdict line for panic/wgpu
+panicked at                                      # a Rust panic reached the console
+GPUValidationError                               # a wgpu validation error (rejected GPU command)
+wgpu.*[Vv]alidation                              # wgpu validation (any phrasing)
+
+# --- session-step failures ----------------------------------------------------
+url-walk: did not complete                       # the HUD route walk broke mid-run
+catalyst: UNHEALTHY                             # a catalyst read endpoint returned non-2xx
+BROKEN\?                                          # a feature scene grepped as broken in the tour ledger
+
+# --- known NON-fatal, kept here ONLY as commented reminders (do NOT enable) ----
+# closure invoked recursively                    # known video-player rejection (product-tour.md) — non-fatal
+# crash overlay                                  # post-load env watchdog — fires AFTER scenes tick, not a scene failure
+# WASMBENCH_RESULT not seen                       # EXPECTED on a stock bundle — GATED, not a regression (BUILD-WASM-BENCHMARK.md)
